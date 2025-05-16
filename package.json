@@ -1,27 +1,21 @@
 {
-  "name": "backend",
+  "name": "alpha-wulf-server",
   "version": "1.0.0",
-  "description": "Backend server for the application",
+  "description": "Alpha Wulf Game Server",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "test": "jest"
+    "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "axios": "^1.6.2",
-    "bcryptjs": "^2.4.3",
+    "@supabase/supabase-js": "^2.39.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.5.0",
-    "node-telegram-bot-api": "^0.64.0",
-    "socket.io": "^4.7.2",
-    "validator": "^13.11.0"
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
-    "jest": "^29.6.4",
     "nodemon": "^3.0.1"
   }
 } 

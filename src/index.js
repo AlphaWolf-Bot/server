@@ -5,6 +5,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
+const supabase = require('./config/supabase');
 
 // Load environment variables
 dotenv.config();
@@ -29,24 +30,75 @@ const realtimeService = new RealtimeService(io);
 app.use(cors());
 app.use(express.json());
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/your_database', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(async () => {
-  console.log('Connected to MongoDB');
-  // Initialize achievements
-  const Achievement = require('./models/Achievement');
-  await Achievement.initializeAchievements();
-})
-.catch(err => console.error('MongoDB connection error:', err));
+// Telegram Web App Authentication Middleware
+const telegramAuth = async (req, res, next) => {
+  try {
+    const initData = req.headers['x-telegram-init-data'];
+    if (!initData) {
+      return res.status(401).json({ error: 'No Telegram data provided' });
+    }
 
-// Routes
+    // Verify Telegram Web App data
+    const { user } = await telegramBotService.verifyTelegramData(initData);
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid Telegram data' });
+    }
+
+    // Get or create user in Supabase
+    const { data: existingUser, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', user.id)
+      .single();
+
+    if (userError && userError.code !== 'PGRST116') {
+      throw userError;
+    }
+
+    let userId;
+    if (!existingUser) {
+      // Create new user
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert([{
+          telegram_id: user.id,
+          username: user.username,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          balance: 0,
+          level: 'Alpha Pup',
+          level_points: 0
+        }])
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      userId = newUser.id;
+    } else {
+      userId = existingUser.id;
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId, telegramId: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    req.user = { id: userId, telegramId: user.id };
+    req.token = token;
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(401).json({ error: 'Authentication failed' });
+  }
+};
+
+// Protected routes
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/progress', require('./routes/progress'));
-app.use('/api/ads', require('./routes/ads'));
+app.use('/api/users', telegramAuth, require('./routes/users'));
+app.use('/api/progress', telegramAuth, require('./routes/progress'));
+app.use('/api/ads', telegramAuth, require('./routes/ads'));
 
 // Error handling middleware
 const errorHandler = require('./middleware/errorHandler');
