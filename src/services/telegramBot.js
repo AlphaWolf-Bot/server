@@ -1,11 +1,14 @@
 const TelegramBot = require('node-telegram-bot-api');
+const crypto = require('crypto');
+const supabase = require('../config/supabase');
 const UserLevel = require('../models/UserLevel');
 const Achievement = require('../models/Achievement');
 const TelegramUser = require('../models/TelegramUser');
 
 class TelegramBotService {
   constructor() {
-    this.bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+    // Initialize bot without polling
+    this.bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
     this.initializeCommands();
   }
 
@@ -144,24 +147,105 @@ To change settings, use:
     });
   }
 
+  // Verify Telegram Web App data
+  async verifyTelegramData(initData) {
+    try {
+      const data = new URLSearchParams(initData);
+      const hash = data.get('hash');
+      data.delete('hash');
+
+      // Sort data alphabetically
+      const dataCheckString = Array.from(data.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+
+      // Create HMAC
+      const secretKey = crypto.createHmac('sha256', 'WebAppData')
+        .update(process.env.TELEGRAM_BOT_TOKEN)
+        .digest();
+
+      const calculatedHash = crypto.createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
+
+      if (calculatedHash !== hash) {
+        throw new Error('Invalid hash');
+      }
+
+      // Parse user data
+      const user = {
+        id: data.get('user') ? JSON.parse(data.get('user')).id : null,
+        username: data.get('user') ? JSON.parse(data.get('user')).username : null,
+        first_name: data.get('user') ? JSON.parse(data.get('user')).first_name : null,
+        last_name: data.get('user') ? JSON.parse(data.get('user')).last_name : null
+      };
+
+      return { user };
+    } catch (error) {
+      console.error('Telegram data verification error:', error);
+      return { user: null };
+    }
+  }
+
+  // Send achievement notification
   async sendAchievementNotification(telegramId, achievement) {
-    const message = `
+    try {
+      const message = `
 🏆 Achievement Unlocked!
 ${achievement.icon} ${achievement.name}
 ${achievement.description}
-    `.trim();
+      `.trim();
 
-    await this.bot.sendMessage(telegramId, message);
+      await this.bot.sendMessage(telegramId, message);
+    } catch (error) {
+      console.error('Error sending achievement notification:', error);
+    }
   }
 
+  // Send level up notification
   async sendLevelUpNotification(telegramId, newLevel) {
-    const message = `
+    try {
+      const message = `
 🎉 Level Up!
 You've reached level ${newLevel}!
 Keep up the great work!
-    `.trim();
+      `.trim();
 
-    await this.bot.sendMessage(telegramId, message);
+      await this.bot.sendMessage(telegramId, message);
+    } catch (error) {
+      console.error('Error sending level up notification:', error);
+    }
+  }
+
+  // Send withdrawal notification
+  async sendWithdrawalNotification(telegramId, amount, status) {
+    try {
+      const message = `
+💰 Withdrawal Update
+Amount: ${amount} coins
+Status: ${status}
+      `.trim();
+
+      await this.bot.sendMessage(telegramId, message);
+    } catch (error) {
+      console.error('Error sending withdrawal notification:', error);
+    }
+  }
+
+  // Send daily bonus notification
+  async sendDailyBonusNotification(telegramId, amount) {
+    try {
+      const message = `
+🎁 Daily Bonus Claimed!
+You received ${amount} coins!
+Come back tomorrow for more!
+      `.trim();
+
+      await this.bot.sendMessage(telegramId, message);
+    } catch (error) {
+      console.error('Error sending daily bonus notification:', error);
+    }
   }
 }
 
